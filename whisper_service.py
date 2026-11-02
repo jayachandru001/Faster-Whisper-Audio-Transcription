@@ -12,9 +12,30 @@ import time
 import logging
 import ctranslate2
 from typing import Optional, Dict, Any, List, Callable, Tuple
-from config import MODEL_NAME, CPU_THREADS, CHUNK_MIN_DURATION_SEC
+from config import MODEL_NAME, CPU_THREADS, CHUNK_MIN_DURATION_SEC, STORAGE_DIR
 
 logger = logging.getLogger(__name__)
+
+def ensure_model_downloaded() -> str:
+    """Ensure Faster-Whisper model files exist locally; automatically download from Hugging Face if missing."""
+    import faster_whisper
+
+    local_model = os.path.join(STORAGE_DIR, "model")
+    model_bin = os.path.join(local_model, "model.bin")
+    if os.path.isdir(local_model) and os.path.isfile(model_bin):
+        logger.info("[Whisper] Verified local model at '%s'.", local_model)
+        return local_model.replace("\\", "/")
+
+    target_repo = os.getenv("WHISPER_MODEL", "Systran/faster-whisper-base")
+    logger.info(
+        "[Whisper] Faster-Whisper model not found locally. Automatically downloading '%s' from Hugging Face into '%s'...",
+        target_repo,
+        local_model,
+    )
+    os.makedirs(local_model, exist_ok=True)
+    downloaded_dir = faster_whisper.download_model(target_repo, output_dir=local_model)
+    logger.info("[Whisper] Faster-Whisper model successfully downloaded to '%s'.", downloaded_dir)
+    return downloaded_dir.replace("\\", "/")
 
 # Custom VAD configurations to protect the beginning of chunks
 DEFAULT_VAD_PARAMETERS = dict(
@@ -78,17 +99,18 @@ def get_whisper_model(device: str = "cpu") -> Tuple[Any, str]:
     key = f"{target_device}_{compute_type}"
     if key not in _cached_models:
         from faster_whisper import WhisperModel
-        logger.info("[Whisper] Loading '%s' on %s (%s compute)...", MODEL_NAME, target_device.upper(), compute_type)
+        model_path = ensure_model_downloaded()
+        logger.info("[Whisper] Loading '%s' on %s (%s compute)...", model_path, target_device.upper(), compute_type)
         if target_device == "cuda":
             _cached_models[key] = WhisperModel(
-                MODEL_NAME,
+                model_path,
                 device="cuda",
                 compute_type=compute_type,
             )
         else:
             try:
                 _cached_models[key] = WhisperModel(
-                    MODEL_NAME,
+                    model_path,
                     device="cpu",
                     compute_type=compute_type,
                     cpu_threads=CPU_THREADS,
@@ -99,7 +121,7 @@ def get_whisper_model(device: str = "cpu") -> Tuple[Any, str]:
                     clear_model_memory()
                     time.sleep(0.5)
                     _cached_models[key] = WhisperModel(
-                        MODEL_NAME,
+                        model_path,
                         device="cpu",
                         compute_type=compute_type,
                         cpu_threads=1,

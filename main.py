@@ -35,7 +35,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
-from whisper_service import is_cuda_available
+from whisper_service import is_cuda_available, ensure_model_downloaded, get_whisper_model
 import ctranslate2
 
 from config import MODEL_NAME
@@ -62,6 +62,17 @@ async def lifespan(app: FastAPI):
     """Application startup & teardown lifecycle."""
     init_db()
     set_event_loop(asyncio.get_running_loop())
+
+    # Automatically download and warm up Faster-Whisper model on hosting service startup
+    logger.info("[Startup] Checking Faster-Whisper model...")
+    try:
+        model_path = await asyncio.to_thread(ensure_model_downloaded)
+        logger.info("[Startup] Model verified at '%s'. Pre-warming engine...", model_path)
+        await asyncio.to_thread(get_whisper_model, "cpu")
+        logger.info("[Startup] Faster-Whisper engine ready for incoming requests.")
+    except Exception as exc:
+        logger.warning("[Startup] Model startup check: %s", exc)
+
     yield
 
 

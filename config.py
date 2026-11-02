@@ -22,7 +22,7 @@ def _resolve_model_path() -> str:
     if os.path.isdir(local_model) and os.path.exists(os.path.join(local_model, "model.bin")):
         return local_model.replace("\\", "/")
 
-    return "base"
+    return "Systran/faster-whisper-base"
 
 MODEL_NAME = _resolve_model_path()
 
