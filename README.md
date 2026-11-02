@@ -140,6 +140,8 @@ vad_parameters = dict(
 
 ## 📦 Quick Start
 
+### Option A: Local Python
+
 ```bash
 # 1. Setup virtual environment
 python -m venv .venv
@@ -150,6 +152,16 @@ pip install -r requirements.txt
 
 # 3. Start service
 python main.py
+```
+
+### Option B: Docker
+
+```bash
+# 1. Build Docker image
+docker build -t whisper-transcription .
+
+# 2. Run container (persisting storage for models & DB)
+docker run -d -p 8000:8000 -v $(pwd)/storage:/app/storage --name whisper-app whisper-transcription
 ```
 
 - **Web Studio UI:** `http://localhost:8000`

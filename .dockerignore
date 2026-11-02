@@ -1,0 +1,35 @@
+# Virtual environments
+.venv/
+venv/
+env/
+.dist/
+
+# Git
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Local databases and uploads
+storage/whisper.db*
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/temp/*
+!storage/temp/.gitkeep
+storage/model/*
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Documentation / assessment files
+IMPLEMENTATION_PLAN.md
+Q&A.md
+Q_AND_A.md
+ADR.md
