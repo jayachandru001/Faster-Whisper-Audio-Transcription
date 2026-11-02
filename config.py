@@ -1,23 +1,36 @@
 """Configuration and environment constants."""
 
 import os
+import tempfile
 
-# Prevent Intel MKL / OpenMP heap exhaustion on Windows
+# 1. Prevent Intel MKL / OpenMP heap exhaustion on Windows
 os.environ.setdefault("CT2_USE_MKL", "0")
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-os.environ.setdefault("MKL_NUM_THREADS", "2")
-os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-# Detect serverless / read-only filesystem environments (e.g. Vercel, AWS Lambda)
-def _resolve_storage_dir() -> str:
-    env_storage = os.getenv("STORAGE_DIR")
-    if env_storage:
-        return env_storage
-    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("K_SERVICE"):
-        return "/tmp/storage"
-    return "./storage"
+# 2. Serverless & Read-Only Filesystem Handling (Vercel, AWS Lambda, Cloud Run, etc.)
+# In serverless environments, root is read-only. Hugging Face, Rust Tokenizers, and PyTorch
+# MUST point their cache and temp directories to /tmp to prevent "Read-only file system (os error 30)"
+IS_SERVERLESS = bool(
+    os.getenv("VERCEL")
+    or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    or os.getenv("K_SERVICE")
+    or not os.access(".", os.W_OK)
+)
 
-STORAGE_DIR = _resolve_storage_dir()
+if IS_SERVERLESS:
+    tmp_base = tempfile.gettempdir()
+    os.environ.setdefault("HF_HOME", os.path.join(tmp_base, "huggingface"))
+    os.environ.setdefault("HF_HUB_CACHE", os.path.join(tmp_base, "huggingface", "hub"))
+    os.environ.setdefault("TORCH_HOME", os.path.join(tmp_base, "torch"))
+    os.environ.setdefault("TMPDIR", tmp_base)
+    os.environ.setdefault("PYTHONPYCACHEPREFIX", os.path.join(tmp_base, "pycache"))
+    DEFAULT_STORAGE = os.path.join(tmp_base, "storage")
+else:
+    DEFAULT_STORAGE = "./storage"
+
+STORAGE_DIR = os.getenv("STORAGE_DIR", DEFAULT_STORAGE)
 UPLOAD_DIR = os.path.join(STORAGE_DIR, "uploads")
 DB_PATH = os.path.join(STORAGE_DIR, "whisper.db")
 

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from config import DB_PATH, UPLOAD_DIR
 import os
+import tempfile
 
 
 def get_db() -> sqlite3.Connection:
@@ -14,9 +15,9 @@ def get_db() -> sqlite3.Connection:
     try:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)
-    except (sqlite3.OperationalError, OSError):
-        # Fall back to /tmp if current directory is read-only (e.g. Vercel, AWS Lambda)
-        fallback_dir = "/tmp/storage"
+    except Exception:
+        # Fall back to temp dir if current directory is read-only (e.g. Vercel, AWS Lambda)
+        fallback_dir = os.path.join(tempfile.gettempdir(), "storage")
         os.makedirs(fallback_dir, exist_ok=True)
         DB_PATH = os.path.join(fallback_dir, "whisper.db")
         conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)

@@ -1,6 +1,7 @@
 """Faster-Whisper model loading and speech inference supporting CPU and GPU."""
 
 import os
+import tempfile
 # Prevent Intel MKL memory allocation errors on Windows
 os.environ.setdefault("CT2_USE_MKL", "0")
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
@@ -32,13 +33,23 @@ def ensure_model_downloaded() -> str:
         target_repo,
         local_model,
     )
+    cache_dir = os.environ.get("HF_HUB_CACHE")
     try:
         os.makedirs(local_model, exist_ok=True)
-        downloaded_dir = faster_whisper.download_model(target_repo, output_dir=local_model)
-    except OSError:
-        fallback_dir = "/tmp/storage/model"
+        downloaded_dir = faster_whisper.download_model(
+            target_repo,
+            output_dir=local_model,
+            cache_dir=cache_dir,
+        )
+    except Exception as exc:
+        logger.warning("[Whisper] Primary model download failed (%s). Retrying in /tmp...", exc)
+        fallback_dir = os.path.join(tempfile.gettempdir(), "storage", "model")
         os.makedirs(fallback_dir, exist_ok=True)
-        downloaded_dir = faster_whisper.download_model(target_repo, output_dir=fallback_dir)
+        downloaded_dir = faster_whisper.download_model(
+            target_repo,
+            output_dir=fallback_dir,
+            cache_dir=cache_dir,
+        )
     logger.info("[Whisper] Faster-Whisper model successfully downloaded to '%s'.", downloaded_dir)
     return downloaded_dir.replace("\\", "/")
 
@@ -111,6 +122,7 @@ def get_whisper_model(device: str = "cpu") -> Tuple[Any, str]:
                 model_path,
                 device="cuda",
                 compute_type=compute_type,
+                download_root=os.path.dirname(model_path),
             )
         else:
             try:
@@ -119,6 +131,7 @@ def get_whisper_model(device: str = "cpu") -> Tuple[Any, str]:
                     device="cpu",
                     compute_type=compute_type,
                     cpu_threads=CPU_THREADS,
+                    download_root=os.path.dirname(model_path),
                 )
             except RuntimeError as exc:
                 if "mkl_malloc" in str(exc).lower() or "memory" in str(exc).lower():
@@ -130,6 +143,7 @@ def get_whisper_model(device: str = "cpu") -> Tuple[Any, str]:
                         device="cpu",
                         compute_type=compute_type,
                         cpu_threads=1,
+                        download_root=os.path.dirname(model_path),
                     )
                 else:
                     raise

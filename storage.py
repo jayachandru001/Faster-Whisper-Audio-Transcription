@@ -24,6 +24,7 @@ CHUNK_SIZE = 1024 * 1024  # 1MB buffer
 
 async def save_upload_file(file: UploadFile, job_id: str, filename: str) -> str:
     """Save uploaded audio to disk in 1MB chunks to ensure constant O(1) memory usage (up to 500MB)."""
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     safe_name = f"{job_id}_{filename}"
     save_path = os.path.join(UPLOAD_DIR, safe_name)
     total_bytes = 0
