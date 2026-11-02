@@ -10,6 +10,7 @@ import os
 
 def get_db() -> sqlite3.Connection:
     """Return a thread-safe, optimized connection to SQLite."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000;")
@@ -18,6 +19,7 @@ def get_db() -> sqlite3.Connection:
 
 def init_db() -> None:
     """Create upload directory and jobs table schema with WAL mode and indexes."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     conn = get_db()
     with conn:
