@@ -66,10 +66,13 @@ async def lifespan(app: FastAPI):
     # Automatically download and warm up Faster-Whisper model on hosting service startup
     logger.info("[Startup] Checking Faster-Whisper model...")
     try:
-        model_path = await asyncio.to_thread(ensure_model_downloaded)
-        logger.info("[Startup] Model verified at '%s'. Pre-warming engine...", model_path)
-        await asyncio.to_thread(get_whisper_model, "cpu")
-        logger.info("[Startup] Faster-Whisper engine ready for incoming requests.")
+        if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+            logger.info("[Startup] Serverless environment detected. Model download deferred to first request.")
+        else:
+            model_path = await asyncio.to_thread(ensure_model_downloaded)
+            logger.info("[Startup] Model verified at '%s'. Pre-warming engine...", model_path)
+            await asyncio.to_thread(get_whisper_model, "cpu")
+            logger.info("[Startup] Faster-Whisper engine ready for incoming requests.")
     except Exception as exc:
         logger.warning("[Startup] Model startup check: %s", exc)
 

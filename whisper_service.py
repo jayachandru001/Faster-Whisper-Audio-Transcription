@@ -32,8 +32,13 @@ def ensure_model_downloaded() -> str:
         target_repo,
         local_model,
     )
-    os.makedirs(local_model, exist_ok=True)
-    downloaded_dir = faster_whisper.download_model(target_repo, output_dir=local_model)
+    try:
+        os.makedirs(local_model, exist_ok=True)
+        downloaded_dir = faster_whisper.download_model(target_repo, output_dir=local_model)
+    except OSError:
+        fallback_dir = "/tmp/storage/model"
+        os.makedirs(fallback_dir, exist_ok=True)
+        downloaded_dir = faster_whisper.download_model(target_repo, output_dir=fallback_dir)
     logger.info("[Whisper] Faster-Whisper model successfully downloaded to '%s'.", downloaded_dir)
     return downloaded_dir.replace("\\", "/")
 

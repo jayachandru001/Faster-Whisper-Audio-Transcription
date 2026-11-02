@@ -9,9 +9,18 @@ import os
 
 
 def get_db() -> sqlite3.Connection:
-    """Return a thread-safe, optimized connection to SQLite."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)
+    """Return a thread-safe, optimized connection to SQLite with automatic /tmp fallback."""
+    global DB_PATH
+    try:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)
+    except (sqlite3.OperationalError, OSError):
+        # Fall back to /tmp if current directory is read-only (e.g. Vercel, AWS Lambda)
+        fallback_dir = "/tmp/storage"
+        os.makedirs(fallback_dir, exist_ok=True)
+        DB_PATH = os.path.join(fallback_dir, "whisper.db")
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)
+
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000;")
     return conn
@@ -19,13 +28,20 @@ def get_db() -> sqlite3.Connection:
 
 def init_db() -> None:
     """Create upload directory and jobs table schema with WAL mode and indexes."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+    except OSError:
+        pass
+
     conn = get_db()
     with conn:
-        # High-concurrency WAL mode & fast synchronous writes
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
+        # High-concurrency WAL mode & fast synchronous writes (falls back to DELETE if WAL unsupported)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+        except Exception:
+            conn.execute("PRAGMA journal_mode = DELETE;")
         conn.execute("PRAGMA busy_timeout = 5000;")
 
         conn.execute(

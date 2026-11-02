@@ -8,7 +8,16 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 
-STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+# Detect serverless / read-only filesystem environments (e.g. Vercel, AWS Lambda)
+def _resolve_storage_dir() -> str:
+    env_storage = os.getenv("STORAGE_DIR")
+    if env_storage:
+        return env_storage
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("K_SERVICE"):
+        return "/tmp/storage"
+    return "./storage"
+
+STORAGE_DIR = _resolve_storage_dir()
 UPLOAD_DIR = os.path.join(STORAGE_DIR, "uploads")
 DB_PATH = os.path.join(STORAGE_DIR, "whisper.db")
 
