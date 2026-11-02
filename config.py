@@ -23,6 +23,8 @@ if IS_SERVERLESS:
     tmp_base = tempfile.gettempdir()
     os.environ.setdefault("HF_HOME", os.path.join(tmp_base, "huggingface"))
     os.environ.setdefault("HF_HUB_CACHE", os.path.join(tmp_base, "huggingface", "hub"))
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
     os.environ.setdefault("TORCH_HOME", os.path.join(tmp_base, "torch"))
     os.environ.setdefault("TMPDIR", tmp_base)
     os.environ.setdefault("PYTHONPYCACHEPREFIX", os.path.join(tmp_base, "pycache"))
