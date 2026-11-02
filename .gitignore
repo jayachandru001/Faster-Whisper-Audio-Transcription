@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments & builds
+.venv/
+venv/
+env/
+.dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local storage, database and heavy model weights (>100MB)
+storage/model/
+storage/whisper.db*
+storage/temp/*
+!storage/temp/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Assessment docs
+IMPLEMENTATION_PLAN.md
+Q&A.md
+Q_AND_A.md
+ADR.md
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
