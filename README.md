@@ -9,7 +9,8 @@ Features zero external dependencies (no Redis, no Celery), built-in CPU/GPU acce
 ## 📑 Table of Contents
 - [Architecture & Execution Flow](#-architecture--execution-flow)
 - [Codebase Structure](#-codebase-structure)
-- [Acoustic Chunking Strategy](#-acoustic-chunking-strategy)
+- [Acoustic Chunking & High-Precision Alignment](#-acoustic-chunking--high-precision-alignment)
+- [Smart Word-Level Subtitle Formatting](#-smart-word-level-subtitle-formatting)
 - [Model & Quantization](#-model--quantization)
 - [Quick Start](#-quick-start)
 - [Interactive Web UI](#-interactive-web-ui)
@@ -44,9 +45,9 @@ sequenceDiagram
 
     Worker->>Whisper: transcribe_audio_file()
     Whisper->>Whisper: Probe duration via PyAV (<10ms)
-    alt Duration < 300s (Route A: Single Pass)
-        Whisper->>Whisper: model.transcribe() (full context, zero chunk overhead)
-    else Duration >= 300s (Route B: Parallel VAD Batched)
+    alt Duration < 1800s (Route A: Full Attention Single Pass)
+        Whisper->>Whisper: model.transcribe() (DTW cross-attention word alignment, zero chunk drift)
+    else Duration >= 1800s (Route B: Parallel VAD Batched)
         Whisper->>Whisper: batched_pipeline.transcribe() (Silero VAD, batch_size=2|8)
     end
     Whisper-->>Worker: Stream segment progress -> DB & SSE
@@ -59,16 +60,18 @@ sequenceDiagram
     SSE-->>Client: Push completion event (100%)
     Client->>Main: GET /api/v1/transcriptions/{job_id}/result
     Main->>DB: Fetch completed transcript & segments
-    DB-->>Main: Return transcript & timestamps
-    Main-->>Client: HTTP 200 OK (Full text, segment timestamps & subtitle exports)
+    Main->>Main: Extract word-level subtitle cues (max 4.5s, max 42 chars, silence gaps)
+    Main-->>Client: HTTP 200 OK (Full text, short cue timestamps & subtitle exports)
 ```
 
 ### Pipeline Summary
 1. **$O(1)$ Memory Upload:** Streamed in 1 MB chunks directly to disk; rejects files over 500 MB with `HTTP 413`.
 2. **Instant Handshake:** Validates format, records job in SQLite WAL, and returns `HTTP 202` in $<100\text{ms}$.
 3. **Isolated Thread Pool:** Background jobs run on `ThreadPoolExecutor(max_workers=1)` to prevent CPU event-loop starvation.
-4. **PyAV Pre-flight Probe:** Inspects container metadata in $<10\text{ms}$ to route by length (<5 min vs $\ge$5 min).
-5. **Real-Time Push & Export:** Progress broadcasts over SSE; outputs formatted `.srt`, `.vtt`, and `.json`.
+4. **PyAV Pre-flight Probe:** Inspects container metadata in $<10\text{ms}$ to route audio length.
+5. **Exact Word Alignment:** Uses native Dynamic Time Warping (DTW) for audio $<30$ min, preventing batch-slicing timestamp drift.
+6. **Smart Subtitle Formatting:** Generates clean, broadcast-standard subtitle cards (max 4.5s) that disappear during silence gaps.
+7. **Real-Time Push & Export:** Progress broadcasts over SSE; outputs formatted `.srt`, `.vtt`, and `.json`.
 
 ---
 
@@ -103,17 +106,17 @@ Audio_Voice_Transcription/
 
 ---
 
-## ⚡ Acoustic Chunking Strategy
+## ⚡ Acoustic Chunking & High-Precision Alignment
 
 ### Why Clock Slicing Fails vs Silero VAD
 - **Fixed Clock Slicing (e.g. every 30s):** Cuts words in half mid-phoneme (e.g., `trans-` / `-cription`). This forces Whisper's autoregressive decoder into hallucination loops and broken timestamps.
 - **Silero VAD Silence Chunking:** Slices audio strictly at natural breath and speech pauses ($>500\text{ms}$ silence gaps). Words and phonemes remain 100% intact.
 
-### 5-Minute Dual-Route Logic
+### 30-Minute Dual-Route Architecture
 | Route | Condition | Engine Path | Rationale |
 | :--- | :--- | :--- | :--- |
-| **Route A** | `< 5 min` ($< 300\text{s}$) | `model.transcribe()` | Single continuous pass. Preserves full cross-attention context; zero chunking overhead for short memos. |
-| **Route B** | `≥ 5 min` ($\ge 300\text{s}$) | `batched_pipeline.transcribe()` | Slices at VAD pauses and infers in parallel batches (`batch_size=2` CPU, `8` GPU). 3x–6x speedup on long audio. |
+| **Route A (High Precision)** | `< 30 min` ($< 1800\text{s}$) | `model.transcribe()` | Single continuous pass with Dynamic Time Warping (DTW) word alignment. Prevents batch slicing drift and provides millisecond-accurate word boundaries. |
+| **Route B (Parallel Batch)** | `≥ 30 min` ($\ge 1800\text{s}$) | `batched_pipeline.transcribe()` | Slices at VAD pauses and infers in parallel batches (`batch_size=2` CPU, `8` GPU) for ultra-long audio files. |
 
 ### Custom VAD Edge-Protection Parameters
 ```python
@@ -124,8 +127,28 @@ vad_parameters = dict(
 )
 ```
 
-- **Global Timestamp Reassembly:** Segment timestamps are offset by chunk starts ($t_{\text{global}} = \text{chunk\_start} + t_{\text{local}}$), preserving monotonic subtitle order.
-- **Progress Tracking:** Calculated as $\min(99, \operatorname{round}(t_{\text{current}} / t_{\text{total}} \times 100))$, hitting 100% upon database commit.
+---
+
+## 📝 Smart Word-Level Subtitle Formatting
+
+Whisper natively outputs coarse 30-second acoustic windows. The service includes a word-level subtitle formatter in [`subtitles.py`](subtitles.py) that automatically transforms raw model output into readable, broadcast-standard subtitle cards:
+
+### Formatting Rules
+1. **Length Cap:** Max **42 characters** (or ~8 words) per subtitle cue to prevent visual clutter.
+2. **Duration Ceiling:** Hard-limits any individual subtitle cue to **4.5 seconds**.
+3. **Punctuation Splitting:** Breaks cues immediately at terminal punctuation marks (`.`, `?`, `!`, `,`, `;`, `:`).
+4. **Silence Gaps & Clean Screen:** Breaks cues whenever a speech pause $\ge 0.5\text{s}$ occurs between words. Subtitles **disappear completely during pauses**, leaving the video screen clean.
+
+```srt
+1
+00:00:01,360 --> 00:00:02,180
+Look Jeff,
+
+2
+00:00:06,050 --> 00:00:09,270
+glad to see things are going well and
+```
+*(Notice: Between `00:00:02,180` and `00:00:06,050`, there is a 3.87-second pause where no subtitle is displayed).*
 
 ---
 
@@ -214,7 +237,7 @@ Set via environment variables or edit `config.py`:
 | `STORAGE_DIR` | `./storage` | Directory for DB, uploads, and model cache |
 | `WHISPER_MODEL` | `storage/model` | Path to local model folder or HuggingFace ID |
 | `WHISPER_CPU_THREADS` | `2` | Worker threads per CTranslate2 instance |
-| `CHUNK_MIN_DURATION_SEC` | `300.0` | Minimum seconds to trigger parallel VAD batching (5 min) |
+| `CHUNK_MIN_DURATION_SEC` | `1800.0` | Minimum seconds to trigger parallel VAD batching (30 min) |
 | `MAX_UPLOAD_SIZE_BYTES` | `524288000` | Upload limit in bytes (500 MB) |
 | `MAX_CONCURRENT_JOBS` | `1` | Max concurrent inference jobs |
 | `AUTO_DELETE_AUDIO` | `true` | Delete audio file after transcription |
