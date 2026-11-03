@@ -53,8 +53,8 @@ MODEL_NAME = _resolve_model_path()
 CPU_THREADS = int(os.getenv("WHISPER_CPU_THREADS", "2"))
 ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "flac", "ogg", "webm", "aac", "opus"}
 
-# Minimum audio duration (in seconds) to trigger parallel VAD chunking (default: 300s = 5 min)
-CHUNK_MIN_DURATION_SEC = float(os.getenv("CHUNK_MIN_DURATION_SEC", "300.0"))
+# Minimum audio duration (in seconds) to trigger parallel VAD chunking (default: 1800s = 30 min per ADR D3)
+CHUNK_MIN_DURATION_SEC = float(os.getenv("CHUNK_MIN_DURATION_SEC", "1800.0"))
 
 # Maximum allowed file upload size (default: 500 MB)
 MAX_UPLOAD_SIZE_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(500 * 1024 * 1024)))

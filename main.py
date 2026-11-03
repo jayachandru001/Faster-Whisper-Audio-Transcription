@@ -52,7 +52,7 @@ from storage import (
     save_upload_file,
     cleanup_file,
 )
-from subtitles import to_srt, to_vtt
+from subtitles import to_srt, to_vtt, extract_subtitle_cues
 from pipeline import run_transcription_pipeline
 from ui import get_frontend_html
 
@@ -246,7 +246,8 @@ def get_job_result(job_id: str):
     if row["status"] != "completed":
         raise HTTPException(status_code=409, detail=f"Job is currently '{row['status']}'")
 
-    segments = json.loads(row["segments_json"]) if row["segments_json"] else []
+    raw_segments = json.loads(row["segments_json"]) if row["segments_json"] else []
+    cues = extract_subtitle_cues(raw_segments)
     device_val = (row["device"] if "device" in row.keys() else "cpu") or "cpu"
     return {
         "job_id": row["id"],
@@ -255,7 +256,8 @@ def get_job_result(job_id: str):
         "language": row["language"],
         "duration": row["duration"],
         "text": row["text"],
-        "segments": segments,
+        "segments": cues,
+        "raw_segments": raw_segments,
     }
 
 
@@ -271,28 +273,30 @@ def download_subtitles(
     if row["status"] != "completed":
         raise HTTPException(status_code=409, detail=f"Job is currently '{row['status']}'")
 
-    segments = json.loads(row["segments_json"]) if row["segments_json"] else []
+    raw_segments = json.loads(row["segments_json"]) if row["segments_json"] else []
 
     if format == "srt":
         return Response(
-            content=to_srt(segments),
+            content=to_srt(raw_segments),
             media_type="application/x-subrip",
             headers={"Content-Disposition": f'attachment; filename="{job_id}.srt"'},
         )
     elif format == "vtt":
         return Response(
-            content=to_vtt(segments),
+            content=to_vtt(raw_segments),
             media_type="text/vtt",
             headers={"Content-Disposition": f'attachment; filename="{job_id}.vtt"'},
         )
     else:
+        cues = extract_subtitle_cues(raw_segments)
         return JSONResponse(
             content={
                 "job_id": row["id"],
                 "language": row["language"],
                 "duration": row["duration"],
                 "text": row["text"],
-                "segments": segments,
+                "segments": cues,
+                "raw_segments": raw_segments,
             },
             headers={"Content-Disposition": f'attachment; filename="{job_id}.json"'},
         )
